@@ -1,4 +1,4 @@
-import { App, MarkdownRenderChild, MarkdownRenderer, Plugin, TFile } from 'obsidian';
+import { App, MarkdownRenderChild, MarkdownRenderer, Plugin, TFile, type KeymapContext } from 'obsidian';
 import type { EventRef, MarkdownPostProcessorContext } from 'obsidian';
 
 import type { IQuery } from './IQuery';
@@ -44,6 +44,8 @@ class QueryRenderChild extends MarkdownRenderChild {
     private readonly filePath: string; // The path of the file that contains the instruction block
     private query: IQuery;
     private queryType: string;
+    private focused: boolean;
+    private focusedTaskIndex: number;
 
     private renderEventRef: EventRef | undefined;
     private queryReloadTimeout: NodeJS.Timeout | undefined;
@@ -67,6 +69,40 @@ class QueryRenderChild extends MarkdownRenderChild {
         this.events = events;
         this.source = source;
         this.filePath = filePath;
+        this.focused = false;
+        this.focusedTaskIndex = 0;
+
+        console.log(this);
+
+        // Register click event to determine whether in focus
+        this.registerDomEvent(this.app.workspace.containerEl, 'mousedown', (evt: MouseEvent) => {
+            if (this.containerEl.contains(evt.target as HTMLElement)) {
+                this.focused = true;
+            } else {
+                this.focused = false;
+            }
+            console.log(this.focusedTaskIndex);
+        });
+
+        // Register events to move between tasks
+        this.registerScopeEvent(
+            this.app.scope.register([], 'ArrowDown', (evt: KeyboardEvent, ctx: KeymapContext) => {
+                if (this.focused) {
+                    this.focusedTaskIndex++;
+                    this.events.triggerRequestCacheUpdate(this.render.bind(this));
+                    evt.preventDefault();
+                }
+            }),
+        );
+        this.registerScopeEvent(
+            this.app.scope.register([], 'ArrowUp', (evt: KeyboardEvent, ctx: KeymapContext) => {
+                if (this.focused) {
+                    this.focusedTaskIndex--;
+                    this.events.triggerRequestCacheUpdate(this.render.bind(this));
+                    evt.preventDefault();
+                }
+            }),
+        );
 
         // The engine is chosen on the basis of the code block language. Currently
         // there is only the main engine for the plugin, this allows others to be
@@ -198,6 +234,8 @@ class QueryRenderChild extends MarkdownRenderChild {
                 layoutOptions: this.query.layoutOptions,
                 isFilenameUnique,
             });
+
+            if (i == this.focusedTaskIndex) listItem.addClass(['triage-focused']);
 
             // Remove all footnotes. They don't re-appear in another document.
             const footnotes = listItem.querySelectorAll('[data-footnote-id]');

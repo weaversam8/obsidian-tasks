@@ -21,6 +21,10 @@
     margin: 0;
 }
 
+.triage-focused {
+    border: 2px solid rgba(245, 215, 39, 0.3);
+    border-radius: 5px;
+}
 /* Pencil icon. */
 .tasks-edit {
     background-color: var(--text-faint);
