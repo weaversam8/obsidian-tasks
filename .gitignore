@@ -27,6 +27,9 @@ yarn-error.log
 # asdf
 .tool-versions
 
+# nvm
+.nvmrc
+
 # files in sample vaults
 /resources/sample_vaults/Tasks-Demo/.obsidian/workspace
 /resources/sample_vaults/Tasks-Demo/.obsidian/workspace.json

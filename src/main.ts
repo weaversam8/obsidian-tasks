@@ -7,6 +7,7 @@ import { initializeFile } from './File';
 import { InlineRenderer } from './InlineRenderer';
 import { newLivePreviewExtension } from './LivePreviewExtension';
 import { QueryRenderer } from './QueryRenderer';
+import { TriageRenderer } from './TriageRenderer';
 import { getSettings, updateSettings } from './Config/Settings';
 import { SettingsTab } from './Config/SettingsTab';
 import { EditorSuggestor } from './Suggestor/EditorSuggestorPopup';
@@ -15,6 +16,7 @@ export default class TasksPlugin extends Plugin {
     private cache: Cache | undefined;
     public inlineRenderer: InlineRenderer | undefined;
     public queryRenderer: QueryRenderer | undefined;
+    public triageRenderer: TriageRenderer | undefined;
 
     async onload() {
         console.log('loading plugin "tasks"');
@@ -35,6 +37,7 @@ export default class TasksPlugin extends Plugin {
         });
         this.inlineRenderer = new InlineRenderer({ plugin: this });
         this.queryRenderer = new QueryRenderer({ plugin: this, events });
+        this.triageRenderer = new TriageRenderer({ plugin: this, events });
 
         this.registerEditorExtension(newLivePreviewExtension());
         this.registerEditorSuggest(new EditorSuggestor(this.app, getSettings()));
