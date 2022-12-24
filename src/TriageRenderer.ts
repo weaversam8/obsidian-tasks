@@ -46,6 +46,7 @@ class QueryRenderChild extends MarkdownRenderChild {
     private queryType: string;
     private focused: boolean;
     private focusedTaskIndex: number;
+    private maxTaskIndex: number;
 
     private renderEventRef: EventRef | undefined;
     private queryReloadTimeout: NodeJS.Timeout | undefined;
@@ -71,17 +72,23 @@ class QueryRenderChild extends MarkdownRenderChild {
         this.filePath = filePath;
         this.focused = false;
         this.focusedTaskIndex = 0;
+        this.maxTaskIndex = 0;
 
         console.log(this);
 
         // Register click event to determine whether in focus
         this.registerDomEvent(this.app.workspace.containerEl, 'mousedown', (evt: MouseEvent) => {
             if (this.containerEl.contains(evt.target as HTMLElement)) {
-                this.focused = true;
+                if (!this.focused) {
+                    this.focused = true;
+                    this.events.triggerRequestCacheUpdate(this.render.bind(this));
+                }
             } else {
-                this.focused = false;
+                if (this.focused) {
+                    this.focused = false;
+                    this.events.triggerRequestCacheUpdate(this.render.bind(this));
+                }
             }
-            console.log(this.focusedTaskIndex);
         });
 
         // Register events to move between tasks
@@ -89,6 +96,7 @@ class QueryRenderChild extends MarkdownRenderChild {
             this.app.scope.register([], 'ArrowDown', (evt: KeyboardEvent, ctx: KeymapContext) => {
                 if (this.focused) {
                     this.focusedTaskIndex++;
+                    if (this.focusedTaskIndex > this.maxTaskIndex) this.focusedTaskIndex = this.maxTaskIndex;
                     this.events.triggerRequestCacheUpdate(this.render.bind(this));
                     evt.preventDefault();
                 }
@@ -98,6 +106,7 @@ class QueryRenderChild extends MarkdownRenderChild {
             this.app.scope.register([], 'ArrowUp', (evt: KeyboardEvent, ctx: KeymapContext) => {
                 if (this.focused) {
                     this.focusedTaskIndex--;
+                    if (this.focusedTaskIndex < 0) this.focusedTaskIndex = 0;
                     this.events.triggerRequestCacheUpdate(this.render.bind(this));
                     evt.preventDefault();
                 }
@@ -177,6 +186,7 @@ class QueryRenderChild extends MarkdownRenderChild {
                 this.createExplanation(content);
             }
 
+            let indexOffset = 0;
             const tasksSortedLimitedGrouped = this.query.applyQueryToTasks(tasks);
             for (const group of tasksSortedLimitedGrouped.groups) {
                 // If there were no 'group by' instructions, group.groupHeadings
@@ -184,13 +194,23 @@ class QueryRenderChild extends MarkdownRenderChild {
                 const groupHeadings =
                     group.groupHeadings.length == 0 ? [new GroupHeading(1, '(no group)')] : group.groupHeadings;
 
-                const { taskList } = await this.createTasksList({
+                let groupFocusIndexes = [];
+                for (let _ of groupHeadings) groupFocusIndexes.push(indexOffset);
+
+                // we add 1 to account for the group being selectable
+                indexOffset += 1;
+
+                const { taskList, tasksCount } = await this.createTasksList({
                     tasks: group.tasks,
                     content: content,
+                    indexOffset: indexOffset,
                 });
 
-                this.addGroupHeadings(content, groupHeadings, taskList, group.tasks.length);
+                indexOffset += tasksCount;
+
+                this.addGroupHeadings(content, groupHeadings, taskList, group.tasks.length, groupFocusIndexes);
             }
+            this.maxTaskIndex = indexOffset - 1;
             const totalTasksCount = tasksSortedLimitedGrouped.totalTasksCount();
             console.debug(`${totalTasksCount} of ${tasks.length} tasks displayed in a block in "${this.filePath}"`);
             this.addTotalTaskCount(content, totalTasksCount);
@@ -216,9 +236,11 @@ class QueryRenderChild extends MarkdownRenderChild {
     private async createTasksList({
         tasks,
         content,
+        indexOffset,
     }: {
         tasks: Task[];
         content: HTMLDivElement;
+        indexOffset: number;
     }): Promise<{ taskList: HTMLUListElement; tasksCount: number }> {
         const tasksCount = tasks.length;
 
@@ -235,7 +257,15 @@ class QueryRenderChild extends MarkdownRenderChild {
                 isFilenameUnique,
             });
 
-            if (i == this.focusedTaskIndex) listItem.addClass(['triage-focused']);
+            // add the "focused" class if the triage view is focused and the task is selected
+            if (i + indexOffset == this.focusedTaskIndex && this.focused) listItem.addClass('triage-focused');
+
+            // add an event listener to update the focused task index if clicked
+            this.registerDomEvent(listItem, 'click', (evt) => {
+                this.focused = true;
+                this.focusedTaskIndex = i + indexOffset;
+                this.events.triggerRequestCacheUpdate(this.render.bind(this));
+            });
 
             // Remove all footnotes. They don't re-appear in another document.
             const footnotes = listItem.querySelectorAll('[data-footnote-id]');
@@ -302,9 +332,10 @@ class QueryRenderChild extends MarkdownRenderChild {
         groupHeadings: GroupHeading[],
         tasks: HTMLUListElement,
         tasksCount: number,
+        focusIndexes: number[],
     ) {
-        for (const heading of groupHeadings) {
-            this.addGroupHeading(content, heading, tasks, tasksCount);
+        for (let i = 0; i < groupHeadings.length; i++) {
+            this.addGroupHeading(content, groupHeadings[i], tasks, tasksCount, focusIndexes[i]);
         }
     }
 
@@ -313,6 +344,7 @@ class QueryRenderChild extends MarkdownRenderChild {
         group: GroupHeading,
         tasks: HTMLUListElement,
         tasksCount: number,
+        focusIndex: number,
     ) {
         let list = content.createEl('ul', {
             cls: 'triage-ul',
@@ -323,14 +355,27 @@ class QueryRenderChild extends MarkdownRenderChild {
             text: group.name,
         });
 
+        // add the "focused" class if the triage view is focused and the group is selected
+        if (focusIndex == this.focusedTaskIndex && this.focused) header.addClass('triage-focused');
+
+        let taskCount: EventTarget | null = null;
         if (!this.query.layoutOptions.hideTaskCount) {
-            header.createSpan({
+            taskCount = header.createSpan({
                 text: ` (${tasksCount} task${tasksCount !== 1 ? 's' : ''})`,
                 cls: 'tasks-count-triage',
             });
         }
 
         header.appendChild(tasks);
+
+        // add an event listener to update the focused index if clicked
+        this.registerDomEvent(header, 'click', (evt) => {
+            if (evt.target == header || evt.target == taskCount) {
+                this.focused = true;
+                this.focusedTaskIndex = focusIndex;
+                this.events.triggerRequestCacheUpdate(this.render.bind(this));
+            }
+        });
 
         await MarkdownRenderer.renderMarkdown('', header, this.filePath, this);
     }
