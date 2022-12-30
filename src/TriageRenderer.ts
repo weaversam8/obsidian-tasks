@@ -1,5 +1,5 @@
-import { App, MarkdownRenderChild, MarkdownRenderer, Plugin, TFile, type KeymapContext } from 'obsidian';
-import type { EventRef, MarkdownPostProcessorContext } from 'obsidian';
+import { App, MarkdownRenderChild, MarkdownRenderer, Menu, Plugin, TFile, type KeymapContext } from 'obsidian';
+import type { EventRef, MarkdownPostProcessorContext, Point } from 'obsidian';
 
 import type { IQuery } from './IQuery';
 import { State } from './Cache';
@@ -9,7 +9,9 @@ import { GroupHeading } from './Query/GroupHeading';
 import { TaskModal } from './TaskModal';
 import type { TasksEvents } from './TasksEvents';
 import type { Task } from './Task';
+import type { TaskGroup } from 'Query/TaskGroup';
 import { DateFallback } from './DateFallback';
+import { SnoozeModal } from 'SnoozeModal';
 
 export class TriageRenderer {
     private readonly app: App;
@@ -47,6 +49,7 @@ class QueryRenderChild extends MarkdownRenderChild {
     private focused: boolean;
     private focusedTaskIndex: number;
     private maxTaskIndex: number;
+    private indexToTaskList: Array<Task | TaskGroup>;
 
     private renderEventRef: EventRef | undefined;
     private queryReloadTimeout: NodeJS.Timeout | undefined;
@@ -73,8 +76,7 @@ class QueryRenderChild extends MarkdownRenderChild {
         this.focused = false;
         this.focusedTaskIndex = 0;
         this.maxTaskIndex = 0;
-
-        console.log(this);
+        this.indexToTaskList = [];
 
         // Register click event to determine whether in focus
         this.registerDomEvent(this.app.workspace.containerEl, 'mousedown', (evt: MouseEvent) => {
@@ -109,6 +111,15 @@ class QueryRenderChild extends MarkdownRenderChild {
                     if (this.focusedTaskIndex < 0) this.focusedTaskIndex = 0;
                     this.events.triggerRequestCacheUpdate(this.render.bind(this));
                     evt.preventDefault();
+                }
+            }),
+        );
+        this.registerScopeEvent(
+            this.app.scope.register([], 'ArrowRight', (evt: KeyboardEvent, ctx: KeymapContext) => {
+                if (this.focused) {
+                    const taskOrGroup: Task | TaskGroup = this.indexToTaskList[this.focusedTaskIndex];
+
+                    new SnoozeModal(this.app, taskOrGroup).open();
                 }
             }),
         );
@@ -197,6 +208,9 @@ class QueryRenderChild extends MarkdownRenderChild {
                 let groupFocusIndexes = [];
                 for (let _ of groupHeadings) groupFocusIndexes.push(indexOffset);
 
+                // keep track of this trask group
+                this.indexToTaskList[indexOffset] = group;
+
                 // we add 1 to account for the group being selectable
                 indexOffset += 1;
 
@@ -256,6 +270,9 @@ class QueryRenderChild extends MarkdownRenderChild {
                 layoutOptions: this.query.layoutOptions,
                 isFilenameUnique,
             });
+
+            // keep track of which index this task is
+            this.indexToTaskList[i + indexOffset] = task;
 
             // add the "focused" class if the triage view is focused and the task is selected
             if (i + indexOffset == this.focusedTaskIndex && this.focused) listItem.addClass('triage-focused');

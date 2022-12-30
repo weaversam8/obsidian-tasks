@@ -25,6 +25,9 @@
     border: 2px solid rgba(245, 215, 39, 0.3);
     border-radius: 5px;
 }
+.snooze-modal-label {
+    padding: 1em;
+}
 /* Pencil icon. */
 .tasks-edit {
     background-color: var(--text-faint);

@@ -34,14 +34,14 @@ export const replaceTaskWithTasks = async ({
 }): Promise<void> => {
     if (vault === undefined || metadataCache === undefined) {
         console.error('Tasks: cannot use File before initializing it.');
-        return;
+        return Promise.reject();
     }
 
     if (!Array.isArray(newTasks)) {
         newTasks = [newTasks];
     }
 
-    tryRepetitive({
+    return tryRepetitive({
         originalTask,
         newTasks,
         vault,
@@ -68,22 +68,26 @@ const tryRepetitive = async ({
     metadataCache: MetadataCache;
     previousTries: number;
 }): Promise<void> => {
-    const retry = () => {
+    const retry = (): Promise<void> => {
         if (previousTries > 10) {
             console.error('Tasks: Too many retries. File update not possible ...');
-            return;
+            return Promise.reject('Too many retries');
         }
 
         const timeout = Math.min(Math.pow(10, previousTries), 100); // 1, 10, 100, 100, 100, ...
-        setTimeout(() => {
-            tryRepetitive({
-                originalTask,
-                newTasks,
-                vault,
-                metadataCache,
-                previousTries: previousTries + 1,
-            });
-        }, timeout);
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                resolve(
+                    tryRepetitive({
+                        originalTask,
+                        newTasks,
+                        vault,
+                        metadataCache,
+                        previousTries: previousTries + 1,
+                    }),
+                );
+            }, timeout);
+        });
     };
 
     const file = vault.getAbstractFileByPath(originalTask.path);
@@ -146,5 +150,5 @@ const tryRepetitive = async ({
         ...fileLines.slice(listItem.position.start.line + 1), // Only supports single-line tasks.
     ];
 
-    await vault.modify(file, updatedFileLines.join('\n'));
+    return vault.modify(file, updatedFileLines.join('\n'));
 };

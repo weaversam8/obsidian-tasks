@@ -4,6 +4,7 @@ import { doAutocomplete } from '../DateAbbreviations';
 import { Recurrence } from '../Recurrence';
 
 import * as task from '../Task';
+import type { Moment } from 'moment';
 
 const datePrefixCharacters = `${task.startDateSymbol}${task.scheduledDateSymbol}${task.dueDateSymbol}`;
 
@@ -20,6 +21,11 @@ export type SuggestInfo = {
     insertAt?: number;
     // How many characters to skip from the original line (e.g. if replacing existing text)
     insertSkip?: number;
+};
+
+export type DateSuggestInfo = SuggestInfo & {
+    // The date that the suggestor has resolved
+    date?: Moment;
 };
 
 /*
@@ -139,7 +145,7 @@ function getPossibleComponentSuggestions(line: string, _settings: Settings): Sug
  * Generic predefined suggestions, in turn, also have two options: either filtered (if the user started typing
  * something where a date is expected) or unfiltered
  */
-function addDatesSuggestions(line: string, cursorPos: number, settings: Settings): SuggestInfo[] {
+export function addDatesSuggestions(line: string, cursorPos: number, settings: Settings): DateSuggestInfo[] {
     const genericSuggestions = [
         'today',
         'tomorrow',
@@ -155,7 +161,7 @@ function addDatesSuggestions(line: string, cursorPos: number, settings: Settings
         'next year',
     ];
 
-    const results: SuggestInfo[] = [];
+    const results: DateSuggestInfo[] = [];
     const dateRegex = new RegExp(`([${datePrefixCharacters}])\\s*([0-9a-zA-Z ]*)`, 'ug');
     const dateMatch = matchByPosition(line, dateRegex, cursorPos);
     if (dateMatch && dateMatch.length >= 2) {
@@ -178,6 +184,7 @@ function addDatesSuggestions(line: string, cursorPos: number, settings: Settings
                 appendText: `${datePrefix} ${possibleDate.format(task.TaskRegularExpressions.dateFormat)} `,
                 insertAt: dateMatch.index,
                 insertSkip: dateMatch[0].length,
+                date: possibleDate,
             });
         }
 
@@ -210,6 +217,7 @@ function addDatesSuggestions(line: string, cursorPos: number, settings: Settings
                 appendText: `${datePrefix} ${formattedDate} `,
                 insertAt: dateMatch.index,
                 insertSkip: dateMatch[0].length,
+                date: parsedDate,
             });
         }
     }
